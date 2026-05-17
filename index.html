@@ -2,7 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>连连看</title>
 <style>
 :root {
@@ -225,6 +227,7 @@ body {
   max-width: 660px;
   display: flex;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 /* Toast 无路可走 */
@@ -565,14 +568,17 @@ body {
 }
 @media (max-width: 479px) {
   .main { padding: var(--space-3) var(--space-2) var(--space-6); gap: var(--space-3); }
-  .board {
-    --tile-size: 40px;
-    --tile-gap: 3px;
-  }
-  .tile { font-size: 20px; }
   .hud { height: 56px; padding: 0 var(--space-3); }
   .score-group { display: none; }
   .btn-secondary { padding: 0 var(--space-4); }
+}
+
+.board, .tile {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+.board {
+  touch-action: none;
 }
 </style>
 </head>
@@ -915,6 +921,28 @@ function getPath(b, r1, c1, r2, c2) {
 // ═══════════════════════════════════════
 //  DOM 操作
 // ═══════════════════════════════════════
+//  棋盘缩放适配（scale 方案，保持格子清晰）
+// ═══════════════════════════════════════
+function scaleBoardToFit() {
+  const wrapper = boardEl.parentElement;
+  boardEl.style.transform = '';
+  boardEl.style.transformOrigin = '';
+  wrapper.style.height = '';
+
+  const boardNaturalW = boardEl.offsetWidth;
+  const wrapperW = wrapper.offsetWidth;
+
+  if (boardNaturalW > 0 && wrapperW < boardNaturalW) {
+    const scale = wrapperW / boardNaturalW;
+    boardEl.style.transformOrigin = 'top center';
+    boardEl.style.transform = `scale(${scale})`;
+    wrapper.style.height = (boardEl.offsetHeight * scale) + 'px';
+  }
+}
+
+// ═══════════════════════════════════════
+//  DOM 操作
+// ═══════════════════════════════════════
 const boardEl        = document.getElementById('board');
 const timerEl        = document.getElementById('timerDisplay');
 const scoreEl        = document.getElementById('scoreDisplay');
@@ -943,10 +971,33 @@ function renderBoard() {
       } else {
         el.classList.add('tile--empty');
       }
-      el.addEventListener('click', () => onTileClick(r, c));
+      bindTileEvents(el, r, c);
       boardEl.appendChild(el);
     }
   }
+  requestAnimationFrame(scaleBoardToFit);
+}
+
+function bindTileEvents(el, r, c) {
+  let touchMoved = false;
+  let touchHandled = false;
+  el.addEventListener('touchstart', () => {
+    touchMoved = false;
+    touchHandled = false;
+  }, { passive: true });
+  el.addEventListener('touchmove', () => {
+    touchMoved = true;
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    if (touchMoved) return;
+    e.preventDefault();
+    touchHandled = true;
+    onTileClick(r, c);
+  }, { passive: false });
+  el.addEventListener('click', () => {
+    if (touchHandled) { touchHandled = false; return; }
+    onTileClick(r, c);
+  });
 }
 
 function updateTile(r, c) {
@@ -1641,6 +1692,12 @@ soundBtnEl.addEventListener('click', () => {
 // 恢复音效偏好
 soundEnabled = localStorage.getItem('llk_sound') !== '0';
 soundBtnEl.textContent = soundEnabled ? '🔊' : '🔇';
+
+boardEl.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+}, { passive: false });
+
+window.addEventListener('resize', scaleBoardToFit);
 
 // ═══════════════════════════════════════
 //  启动
