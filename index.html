@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>连连看</title>
 <style>
 :root {
@@ -280,6 +283,7 @@ body {
   padding: var(--space-3);
   box-shadow: var(--shadow-md);
   user-select: none;
+  touch-action: none;
 }
 
 /* ── 牌格 ── */
@@ -565,14 +569,16 @@ body {
 }
 @media (max-width: 479px) {
   .main { padding: var(--space-3) var(--space-2) var(--space-6); gap: var(--space-3); }
-  .board {
-    --tile-size: 40px;
-    --tile-gap: 3px;
-  }
-  .tile { font-size: 20px; }
+  /* tile-size 由 JS 动态计算写入，此处不再硬编码 */
   .hud { height: 56px; padding: 0 var(--space-3); }
   .score-group { display: none; }
   .btn-secondary { padding: 0 var(--space-4); }
+}
+
+/* 阻止 iOS 双击缩放、长按菜单影响游戏操作 */
+.board, .tile {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 </style>
 </head>
@@ -913,6 +919,37 @@ function getPath(b, r1, c1, r2, c2) {
 }
 
 // ═══════════════════════════════════════
+//  动态棋盘格子尺寸（移动端适配）
+// ═══════════════════════════════════════
+function calcTileSize() {
+  const PADDING = 24;
+  const GAP_COUNT = COLS - 1;
+  const vw = Math.min(window.innerWidth, 660);
+  const available = vw - PADDING * 2;
+
+  let tileSize, tileGap;
+  if (window.innerWidth <= 479) {
+    tileGap = 3;
+    tileSize = Math.floor((available - GAP_COUNT * tileGap) / COLS);
+    tileSize = Math.max(32, Math.min(tileSize, 44));
+  } else if (window.innerWidth <= 767) {
+    tileGap = 4;
+    tileSize = 56;
+  } else if (window.innerWidth <= 1023) {
+    tileGap = 5;
+    tileSize = 64;
+  } else {
+    tileGap = 6;
+    tileSize = 72;
+  }
+
+  const fontSize = Math.round(tileSize * 0.52);
+  boardEl.style.setProperty('--tile-size', tileSize + 'px');
+  boardEl.style.setProperty('--tile-gap', tileGap + 'px');
+  boardEl.style.setProperty('font-size', fontSize + 'px');
+}
+
+// ═══════════════════════════════════════
 //  DOM 操作
 // ═══════════════════════════════════════
 const boardEl        = document.getElementById('board');
@@ -930,6 +967,7 @@ function getTileEl(r, c) {
 }
 
 function renderBoard() {
+  calcTileSize();
   boardEl.innerHTML = '';
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
@@ -943,10 +981,32 @@ function renderBoard() {
       } else {
         el.classList.add('tile--empty');
       }
-      el.addEventListener('click', () => onTileClick(r, c));
+      bindTileEvents(el, r, c);
       boardEl.appendChild(el);
     }
   }
+}
+
+function bindTileEvents(el, r, c) {
+  let touchMoved = false;
+  let touchFired = false;
+  el.addEventListener('touchstart', () => {
+    touchMoved = false;
+    touchFired = false;
+  }, { passive: true });
+  el.addEventListener('touchmove', () => {
+    touchMoved = true;
+  }, { passive: true });
+  el.addEventListener('touchend', (e) => {
+    if (touchMoved) return;
+    e.preventDefault();
+    touchFired = true;
+    onTileClick(r, c);
+  }, { passive: false });
+  el.addEventListener('click', () => {
+    if (touchFired) { touchFired = false; return; }
+    onTileClick(r, c);
+  });
 }
 
 function updateTile(r, c) {
@@ -1641,6 +1701,17 @@ soundBtnEl.addEventListener('click', () => {
 // 恢复音效偏好
 soundEnabled = localStorage.getItem('llk_sound') !== '0';
 soundBtnEl.textContent = soundEnabled ? '🔊' : '🔇';
+
+// ═══════════════════════════════════════
+//  移动端：阻止棋盘区域的页面滚动
+// ═══════════════════════════════════════
+boardEl.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+}, { passive: false });
+
+window.addEventListener('resize', () => {
+  calcTileSize();
+});
 
 // ═══════════════════════════════════════
 //  启动
