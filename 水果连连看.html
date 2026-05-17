@@ -282,6 +282,7 @@ body {
   padding: var(--space-3);
   box-shadow: var(--shadow-md);
   user-select: none;
+  font-size: 36px; /* 默认大小，JS fitBoardToScreen 会覆盖 */
 }
 
 /* ── 牌格 ── */
@@ -296,7 +297,7 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 36px;
+  font-size: inherit;
   transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease;
   will-change: transform;
 }
@@ -546,24 +547,17 @@ body {
   100% { transform: translate(var(--tx), var(--ty)) scale(0.2); opacity: 0; }
 }
 
-/* ── 响应式（桌面断点，移动端由 JS 精确计算）── */
-@media (max-width: 1023px) {
-  .board { --tile-size: 64px; --tile-gap: 5px; }
-  .tile  { font-size: 30px; }
-}
+/* ── 响应式（格子尺寸全部由 JS fitBoardToScreen 控制）── */
 @media (max-width: 767px) {
   .header { height: 48px; }
   .header h1 { font-size: 24px; }
   .hud { height: 64px; }
-  .board { --tile-size: 56px; --tile-gap: 4px; }
-  .tile  { font-size: 26px; }
 }
 @media (max-width: 479px) {
   .main { padding: var(--space-3) var(--space-2) var(--space-6); gap: var(--space-3); }
   .hud  { height: 56px; padding: 0 var(--space-3); }
   .score-group { display: none; }
   .btn-secondary { padding: 0 var(--space-4); }
-  /* 格子尺寸由 JS 动态写入 inline style，此处不设以免冲突 */
 }
 
 /* 移动端基础优化 */
@@ -914,30 +908,22 @@ function getPath(b, r1, c1, r2, c2) {
 //  动态计算格子尺寸，确保棋盘完整显示
 // ═══════════════════════════════════════
 function fitBoardToScreen() {
-  const BOARD_PADDING = 12 * 2;   // .board padding: var(--space-3) = 12px 两侧
-  const BOARD_GAP     = 4;        // 移动端默认 gap
-  const COLS_COUNT    = 8;
-  const PAGE_MARGIN   = 8 * 2;    // .main padding 两侧最小留白
+  const COLS_COUNT   = 8;
+  const BOARD_PAD    = 12;  // .board padding (--space-3) 单侧
+  const MAIN_PAD     = 8;   // .main 最小左右 padding 单侧（小屏用 --space-2）
 
-  const availW = Math.min(window.innerWidth, 660) - PAGE_MARGIN - BOARD_PADDING;
-  const tileSize = Math.floor((availW - (COLS_COUNT - 1) * BOARD_GAP) / COLS_COUNT);
+  // 可用宽度：屏幕宽 or 最大容器宽 660，减去两侧页边距和棋盘内边距
+  const vw       = Math.min(window.innerWidth, 660);
+  const availW   = vw - MAIN_PAD * 2 - BOARD_PAD * 2;
 
-  if (window.innerWidth <= 767 && tileSize < 56) {
-    // 小屏才动态覆盖，大屏保持 CSS 媒体查询
-    boardEl.style.setProperty('--tile-size', tileSize + 'px');
-    boardEl.style.setProperty('--tile-gap',  BOARD_GAP + 'px');
-    // emoji 大小跟随格子，约 60% 格子大小
-    boardEl.querySelectorAll('.tile').forEach(t => {
-      t.style.fontSize = Math.round(tileSize * 0.60) + 'px';
-    });
-  } else {
-    // 大屏清除 inline style，交回 CSS 控制
-    boardEl.style.removeProperty('--tile-size');
-    boardEl.style.removeProperty('--tile-gap');
-    boardEl.querySelectorAll('.tile').forEach(t => {
-      t.style.fontSize = '';
-    });
-  }
+  // gap 跟屏幕宽自适应
+  const gap      = vw < 400 ? 3 : 4;
+  const tileSize = Math.floor((availW - gap * (COLS_COUNT - 1)) / COLS_COUNT);
+
+  // 始终写入，不加条件——CSS 媒体查询值作为默认兜底
+  boardEl.style.setProperty('--tile-size', tileSize + 'px');
+  boardEl.style.setProperty('--tile-gap',  gap + 'px');
+  boardEl.style.fontSize = Math.round(tileSize * 0.58) + 'px';
 }
 
 // ═══════════════════════════════════════
