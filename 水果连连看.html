@@ -227,8 +227,6 @@ body {
   max-width: 660px;
   display: flex;
   justify-content: center;
-  /* 小屏时高度由 JS 动态撑开（scale 后实际高度塌陷需补偿） */
-  flex-shrink: 0;
 }
 
 /* Toast 无路可走 */
@@ -288,7 +286,6 @@ body {
 
 /* ── 牌格 ── */
 .tile {
-  --tile-size: 72px;
   width: var(--tile-size, 72px);
   height: var(--tile-size, 72px);
   background: var(--gray-100);
@@ -549,30 +546,24 @@ body {
   100% { transform: translate(var(--tx), var(--ty)) scale(0.2); opacity: 0; }
 }
 
-/* ── 响应式 ── */
+/* ── 响应式（桌面断点，移动端由 JS 精确计算）── */
 @media (max-width: 1023px) {
-  .board {
-    --tile-size: 64px;
-    --tile-gap: 5px;
-  }
-  .tile { font-size: 30px; }
+  .board { --tile-size: 64px; --tile-gap: 5px; }
+  .tile  { font-size: 30px; }
 }
 @media (max-width: 767px) {
   .header { height: 48px; }
   .header h1 { font-size: 24px; }
   .hud { height: 64px; }
-  .board {
-    --tile-size: 56px;
-    --tile-gap: 4px;
-  }
-  .tile { font-size: 26px; }
+  .board { --tile-size: 56px; --tile-gap: 4px; }
+  .tile  { font-size: 26px; }
 }
 @media (max-width: 479px) {
   .main { padding: var(--space-3) var(--space-2) var(--space-6); gap: var(--space-3); }
-  /* 小屏棋盘由 JS scale 缩放，格子尺寸不变（保证 emoji 清晰） */
-  .hud { height: 56px; padding: 0 var(--space-3); }
+  .hud  { height: 56px; padding: 0 var(--space-3); }
   .score-group { display: none; }
   .btn-secondary { padding: 0 var(--space-4); }
+  /* 格子尺寸由 JS 动态写入 inline style，此处不设以免冲突 */
 }
 
 /* 移动端基础优化 */
@@ -580,9 +571,7 @@ body {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
 }
-.board {
-  touch-action: none;
-}
+.board { touch-action: none; }
 </style>
 </head>
 <body>
@@ -922,24 +911,32 @@ function getPath(b, r1, c1, r2, c2) {
 }
 
 // ═══════════════════════════════════════
-//  棋盘缩放适配（scale 方案，保持格子清晰）
+//  动态计算格子尺寸，确保棋盘完整显示
 // ═══════════════════════════════════════
-function scaleBoardToFit() {
-  const wrapper = boardEl.parentElement;
-  // 重置 scale 先测量棋盘原始宽度
-  boardEl.style.transform = '';
-  boardEl.style.transformOrigin = '';
-  wrapper.style.height = '';
+function fitBoardToScreen() {
+  const BOARD_PADDING = 12 * 2;   // .board padding: var(--space-3) = 12px 两侧
+  const BOARD_GAP     = 4;        // 移动端默认 gap
+  const COLS_COUNT    = 8;
+  const PAGE_MARGIN   = 8 * 2;    // .main padding 两侧最小留白
 
-  const boardNaturalW = boardEl.offsetWidth;
-  const wrapperW = wrapper.offsetWidth;
+  const availW = Math.min(window.innerWidth, 660) - PAGE_MARGIN - BOARD_PADDING;
+  const tileSize = Math.floor((availW - (COLS_COUNT - 1) * BOARD_GAP) / COLS_COUNT);
 
-  if (boardNaturalW > 0 && wrapperW < boardNaturalW) {
-    const scale = wrapperW / boardNaturalW;
-    boardEl.style.transformOrigin = 'top center';
-    boardEl.style.transform = `scale(${scale})`;
-    // scale 后 wrapper 高度塌陷（transform 不占流），需手动撑开
-    wrapper.style.height = (boardEl.offsetHeight * scale) + 'px';
+  if (window.innerWidth <= 767 && tileSize < 56) {
+    // 小屏才动态覆盖，大屏保持 CSS 媒体查询
+    boardEl.style.setProperty('--tile-size', tileSize + 'px');
+    boardEl.style.setProperty('--tile-gap',  BOARD_GAP + 'px');
+    // emoji 大小跟随格子，约 60% 格子大小
+    boardEl.querySelectorAll('.tile').forEach(t => {
+      t.style.fontSize = Math.round(tileSize * 0.60) + 'px';
+    });
+  } else {
+    // 大屏清除 inline style，交回 CSS 控制
+    boardEl.style.removeProperty('--tile-size');
+    boardEl.style.removeProperty('--tile-gap');
+    boardEl.querySelectorAll('.tile').forEach(t => {
+      t.style.fontSize = '';
+    });
   }
 }
 
@@ -979,7 +976,7 @@ function renderBoard() {
     }
   }
   // DOM 渲染完成后再测量并缩放
-  requestAnimationFrame(scaleBoardToFit);
+  requestAnimationFrame(fitBoardToScreen);
 }
 
 // 绑定触摸 + 点击（消除移动端 300ms 延迟，防双触发）
@@ -1704,7 +1701,7 @@ boardEl.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 // 屏幕旋转 / 窗口变化时重新缩放
-window.addEventListener('resize', scaleBoardToFit);
+window.addEventListener('resize', fitBoardToScreen);
 
 // ═══════════════════════════════════════
 //  启动
