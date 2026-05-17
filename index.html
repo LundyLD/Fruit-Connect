@@ -227,7 +227,6 @@ body {
   max-width: 660px;
   display: flex;
   justify-content: center;
-  flex-shrink: 0;
 }
 
 /* Toast 无路可走 */
@@ -283,11 +282,11 @@ body {
   padding: var(--space-3);
   box-shadow: var(--shadow-md);
   user-select: none;
+  font-size: 36px; /* 默认大小，JS fitBoardToScreen 会覆盖 */
 }
 
 /* ── 牌格 ── */
 .tile {
-  --tile-size: 72px;
   width: var(--tile-size, 72px);
   height: var(--tile-size, 72px);
   background: var(--gray-100);
@@ -298,7 +297,7 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 36px;
+  font-size: inherit;
   transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease;
   will-change: transform;
 }
@@ -548,45 +547,32 @@ body {
   100% { transform: translate(var(--tx), var(--ty)) scale(0.2); opacity: 0; }
 }
 
-/* ── 响应式 ── */
-@media (max-width: 1023px) {
-  .board {
-    --tile-size: 64px;
-    --tile-gap: 5px;
-  }
-  .tile { font-size: 30px; }
-}
+/* ── 响应式（格子尺寸全部由 JS fitBoardToScreen 控制）── */
 @media (max-width: 767px) {
   .header { height: 48px; }
   .header h1 { font-size: 24px; }
   .hud { height: 64px; }
-  .board {
-    --tile-size: 56px;
-    --tile-gap: 4px;
-  }
-  .tile { font-size: 26px; }
 }
 @media (max-width: 479px) {
   .main { padding: var(--space-3) var(--space-2) var(--space-6); gap: var(--space-3); }
-  .hud { height: 56px; padding: 0 var(--space-3); }
+  .hud  { height: 56px; padding: 0 var(--space-3); }
   .score-group { display: none; }
   .btn-secondary { padding: 0 var(--space-4); }
 }
 
+/* 移动端基础优化 */
 .board, .tile {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
 }
-.board {
-  touch-action: none;
-}
+.board { touch-action: none; }
 </style>
 </head>
 <body>
 
 <!-- 顶栏 -->
 <header class="header">
-  <h1>连连看</h1>
+  <h1>水果连连看</h1>
   <button class="sound-btn" id="soundBtn" title="音效开关">🔊</button>
 </header>
 
@@ -919,25 +905,25 @@ function getPath(b, r1, c1, r2, c2) {
 }
 
 // ═══════════════════════════════════════
-//  DOM 操作
+//  动态计算格子尺寸，确保棋盘完整显示
 // ═══════════════════════════════════════
-//  棋盘缩放适配（scale 方案，保持格子清晰）
-// ═══════════════════════════════════════
-function scaleBoardToFit() {
-  const wrapper = boardEl.parentElement;
-  boardEl.style.transform = '';
-  boardEl.style.transformOrigin = '';
-  wrapper.style.height = '';
+function fitBoardToScreen() {
+  const COLS_COUNT   = 8;
+  const BOARD_PAD    = 12;  // .board padding (--space-3) 单侧
+  const MAIN_PAD     = 8;   // .main 最小左右 padding 单侧（小屏用 --space-2）
 
-  const boardNaturalW = boardEl.offsetWidth;
-  const wrapperW = wrapper.offsetWidth;
+  // 可用宽度：屏幕宽 or 最大容器宽 660，减去两侧页边距和棋盘内边距
+  const vw       = Math.min(window.innerWidth, 660);
+  const availW   = vw - MAIN_PAD * 2 - BOARD_PAD * 2;
 
-  if (boardNaturalW > 0 && wrapperW < boardNaturalW) {
-    const scale = wrapperW / boardNaturalW;
-    boardEl.style.transformOrigin = 'top center';
-    boardEl.style.transform = `scale(${scale})`;
-    wrapper.style.height = (boardEl.offsetHeight * scale) + 'px';
-  }
+  // gap 跟屏幕宽自适应
+  const gap      = vw < 400 ? 3 : 4;
+  const tileSize = Math.floor((availW - gap * (COLS_COUNT - 1)) / COLS_COUNT);
+
+  // 始终写入，不加条件——CSS 媒体查询值作为默认兜底
+  boardEl.style.setProperty('--tile-size', tileSize + 'px');
+  boardEl.style.setProperty('--tile-gap',  gap + 'px');
+  boardEl.style.fontSize = Math.round(tileSize * 0.58) + 'px';
 }
 
 // ═══════════════════════════════════════
@@ -975,9 +961,11 @@ function renderBoard() {
       boardEl.appendChild(el);
     }
   }
-  requestAnimationFrame(scaleBoardToFit);
+  // DOM 渲染完成后再测量并缩放
+  requestAnimationFrame(fitBoardToScreen);
 }
 
+// 绑定触摸 + 点击（消除移动端 300ms 延迟，防双触发）
 function bindTileEvents(el, r, c) {
   let touchMoved = false;
   let touchHandled = false;
@@ -1693,11 +1681,13 @@ soundBtnEl.addEventListener('click', () => {
 soundEnabled = localStorage.getItem('llk_sound') !== '0';
 soundBtnEl.textContent = soundEnabled ? '🔊' : '🔇';
 
+// 阻止触摸棋盘时页面滚动
 boardEl.addEventListener('touchmove', (e) => {
   e.preventDefault();
 }, { passive: false });
 
-window.addEventListener('resize', scaleBoardToFit);
+// 屏幕旋转 / 窗口变化时重新缩放
+window.addEventListener('resize', fitBoardToScreen);
 
 // ═══════════════════════════════════════
 //  启动
